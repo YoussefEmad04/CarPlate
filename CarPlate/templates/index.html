@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>License Plate Detection</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <h1 class="title"><i class="fas fa-video"></i> License Plate Detection</h1>
+        <div class="upload-section">
+            <form action="/" method="post" enctype="multipart/form-data" id="uploadForm">
+                <div class="file-input-container">
+                    <input type="file" name="video" accept="video/mp4" required id="fileInput" class="file-input">
+                    <label for="fileInput" class="file-label">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <span>Choose a video file</span>
+                    </label>
+                    <span class="selected-file" id="selectedFileName">No file chosen</span>
+                </div>
+                <button type="submit" class="submit-btn">
+                    <i class="fas fa-play"></i> Process Video
+                </button>
+            </form>
+        </div>
+        
+        {% if video_uploaded %}
+        <div class="main-content">
+            <div class="video-container">
+                <div class="video-box">
+                    <div class="section-header">
+                        <i class="fas fa-camera"></i>
+                        <h3>Video Processing</h3>
+                        <div class="status-badge" id="processingStatus">
+                            <i class="fas fa-circle"></i>
+                            <span>Processing</span>
+                        </div>
+                    </div>
+                    <div class="video-wrapper">
+                        <img src="{{ url_for('video_feed') }}" width="1020" height="500">
+                        <div class="processing-overlay">
+                            <div class="spinner"></div>
+                            <span>Processing...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="results-container">
+                <div class="section-header">
+                    <i class="fas fa-list"></i>
+                    <h3>Detection Results</h3>
+                    <div class="stats-container">
+                        <div class="stat-badge" id="totalDetections">0</div>
+                        <div class="stat-badge" id="avgConfidence">0%</div>
+                    </div>
+                </div>
+                <div id="detectionResults">
+                    <!-- Results will be populated here -->
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        // File input handling
+        const fileInput = document.getElementById('fileInput');
+        const selectedFileName = document.getElementById('selectedFileName');
+        const uploadForm = document.getElementById('uploadForm');
+
+        fileInput.addEventListener('change', function() {
+            if (this.files.length > 0) {
+                selectedFileName.textContent = this.files[0].name;
+                selectedFileName.classList.add('file-selected');
+            } else {
+                selectedFileName.textContent = 'No file chosen';
+                selectedFileName.classList.remove('file-selected');
+            }
+        });
+
+        uploadForm.addEventListener('submit', function() {
+            document.querySelector('.processing-overlay').style.display = 'flex';
+        });
+
+        // Detection results handling
+        let previousDetections = new Set();
+        let totalConfidence = 0;
+        
+        function updateDetections() {
+            fetch('/get_detections')
+                .then(response => response.json())
+                .then(data => {
+                    const resultsDiv = document.getElementById('detectionResults');
+                    const totalDetectionsEl = document.getElementById('totalDetections');
+                    const avgConfidenceEl = document.getElementById('avgConfidence');
+                    
+                    // Update statistics
+                    totalDetectionsEl.textContent = data.length;
+                    if (data.length > 0) {
+                        totalConfidence = data.reduce((sum, det) => sum + det.confidence, 0);
+                        const avgConf = (totalConfidence / data.length * 100).toFixed(1);
+                        avgConfidenceEl.textContent = `${avgConf}%`;
+                    }
+
+                    // Clear and update results
+                    resultsDiv.innerHTML = '';
+                    data.forEach(detection => {
+                        const detectionBox = document.createElement('div');
+                        detectionBox.className = 'detection-box';
+                        
+                        // Add highlight animation for new detections
+                        if (!previousDetections.has(detection.plate)) {
+                            detectionBox.classList.add('new-detection');
+                            previousDetections.add(detection.plate);
+                        }
+
+                        detectionBox.innerHTML = `
+                            <div class="detection-content">
+                                <div class="detection-header">
+                                    <span class="plate-number">
+                                        <i class="fas fa-car"></i> ${detection.plate}
+                                    </span>
+                                    <span class="confidence ${getConfidenceClass(detection.confidence)}">
+                                        ${(detection.confidence * 100).toFixed(1)}%
+                                    </span>
+                                </div>
+                                <div class="detection-info">
+                                    <span class="timestamp">
+                                        <i class="far fa-clock"></i> ${detection.timestamp}
+                                    </span>
+                                </div>
+                            </div>
+                        `;
+                        resultsDiv.appendChild(detectionBox);
+                    });
+                });
+        }
+
+        function getConfidenceClass(confidence) {
+            if (confidence >= 0.8) return 'confidence-high';
+            if (confidence >= 0.6) return 'confidence-medium';
+            return 'confidence-low';
+        }
+
+        // Update detections every second
+        setInterval(updateDetections, 1000);
+
+        // Remove processing overlay when video feed loads
+        document.querySelector('.video-wrapper img').addEventListener('load', function() {
+            document.querySelector('.processing-overlay').style.display = 'none';
+            document.getElementById('processingStatus').classList.add('active');
+        });
+    </script>
+</body>
+</html>
